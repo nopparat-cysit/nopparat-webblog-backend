@@ -6,7 +6,7 @@ import createPostValodation from "./middlewares/createPost.validation.mjs";
 
 const app = express();
 const port = process.env.PORT || 4000;
-
+app.use(cors()); // อนุญาตให้ทุกโดเมนเข้าถึงได้
 app.use(express.json());
 app.use(
     cors({
