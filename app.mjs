@@ -20,9 +20,14 @@ app.use(
   );
 
 
-app.get("/health", (req, res) => {
-    res.status(200).json({ message: "OK" });
-  });
+app.get("/health", async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM posts`);
+    return res.json({ message: "success select", data: result.rows });
+  } catch (error) {
+    return res.status(500).json({ message: "error naja" });
+  }
+});
 
 app.post("/post",[createPostValodation],async (req, res) => {
   const newPost = { ...req.body };
