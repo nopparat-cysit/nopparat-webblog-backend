@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-const createPostValidation = async (req, res, next) => {
+const updatePostValidation = async (req, res, next) => {
   const newPost = { ...req.body };
 
   // Validate title
@@ -54,4 +54,4 @@ const createPostValidation = async (req, res, next) => {
   next();
 };
 
-export default createPostValidation;
+export default updatePostValidation;
