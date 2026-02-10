@@ -88,9 +88,23 @@ postRoute.put("/:postId",[updatePostValidation], async (req, res) => {
 
 // read all post
 postRoute.get("/", async (req, res) => {
+  const limit = 6;
+  const page = parseInt(req.query.page) || 1;
+  const offset = (page - 1) * limit;
   try {
-    const result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id`);
-    return res.status(200).json({ data: result.rows });
+    // get total posts
+    const totalResult = await pool.query(`SELECT COUNT(*) FROM posts`);
+    const totalPosts = parseInt(totalResult.rows[0].count);
+    const totalPages = Math.ceil(totalPosts / limit);
+    // get paginated posts
+    const result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id ORDER BY posts.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    return res.status(200).json({
+      data: result.rows,
+      totalPosts,
+      totalPages,
+      currentPage: page,
+      limit
+    });
   } catch (error) {
     return res.status(500).json({
       message: "Server could not read post because database connection",
