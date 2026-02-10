@@ -89,7 +89,7 @@ postRoute.put("/:postId",[updatePostValidation], async (req, res) => {
 // read all post
 postRoute.get("/", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM posts`);
+    const result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id`);
     return res.status(200).json({ data: result.rows });
   } catch (error) {
     return res.status(500).json({
@@ -100,11 +100,11 @@ postRoute.get("/", async (req, res) => {
 });
 
 // read one post
-postRoute.get("/:postId", async (req, res) => {
+ postRoute.get("/:postId", async (req, res) => {
   const { postId } = req.params;
 
   try {
-    const result = await pool.query(`SELECT * FROM posts WHERE id = $1` , [postId]);
+    const result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id WHERE posts.id = $1` , [postId]);
     return res.status(200).json({ data: result.rows[0] });
   } catch (error) {
     return res.status(500).json({
