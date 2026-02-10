@@ -9,6 +9,16 @@ postRoute.post("/", [createPostValidation], async (req, res) => {
   const newPost = { ...req.body };
 
   try {
+    // ถ้ามี category (name) ให้ map เป็น category_id
+    let category_id = newPost.category_id;
+    if (!category_id && newPost.category) {
+      const catResult = await pool.query(`SELECT id FROM categories WHERE name = $1`, [newPost.category]);
+      if (catResult.rows.length === 0) {
+        return res.status(400).json({ message: `Category '${newPost.category}' not found` });
+      }
+      category_id = catResult.rows[0].id;
+    }
+
     const result = await pool.query(
       `
       INSERT INTO posts (image, category_id, title, description, content, status_id, date, likes_count)
@@ -17,7 +27,7 @@ postRoute.post("/", [createPostValidation], async (req, res) => {
       `,
       [
         newPost.image,
-        newPost.category_id,
+        category_id,
         newPost.title,
         newPost.description,
         newPost.content,
@@ -91,13 +101,21 @@ postRoute.get("/", async (req, res) => {
   const limit = 6;
   const page = parseInt(req.query.page) || 1;
   const offset = (page - 1) * limit;
+  const category = req.query.category;
   try {
-    // get total posts
-    const totalResult = await pool.query(`SELECT COUNT(*) FROM posts`);
-    const totalPosts = parseInt(totalResult.rows[0].count);
-    const totalPages = Math.ceil(totalPosts / limit);
-    // get paginated posts
-    const result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id ORDER BY posts.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    let totalResult, totalPosts, totalPages, result;
+    if (category) {
+      // filter by category name (case-insensitive)
+      totalResult = await pool.query(`SELECT COUNT(*) FROM posts INNER JOIN categories ON categories.id = posts.category_id WHERE LOWER(categories.name) = LOWER($1)`, [category]);
+      totalPosts = parseInt(totalResult.rows[0].count);
+      totalPages = Math.ceil(totalPosts / limit);
+      result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id WHERE LOWER(categories.name) = LOWER($1) ORDER BY posts.id DESC LIMIT $2 OFFSET $3`, [category, limit, offset]);
+    } else {
+      totalResult = await pool.query(`SELECT COUNT(*) FROM posts`);
+      totalPosts = parseInt(totalResult.rows[0].count);
+      totalPages = Math.ceil(totalPosts / limit);
+      result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id ORDER BY posts.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    }
     return res.status(200).json({
       data: result.rows,
       totalPosts,
