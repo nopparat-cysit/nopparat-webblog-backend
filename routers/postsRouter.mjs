@@ -98,10 +98,15 @@ postRoute.put("/:postId",[updatePostValidation], async (req, res) => {
 
 // read all post
 postRoute.get("/", async (req, res) => {
-  const limit = 6;
-  const page = parseInt(req.query.page) || 1;
-  const offset = (page - 1) * limit;
-  const category = req.query.category;
+  // default limit = 6, but allow override via query ?limit=
+  let limit = parseInt(req.query.limit) || 6;
+  if (limit <= 0) limit = 6;
+
+  let page = parseInt(req.query.page) || 1;
+  if (page <= 0) page = 1;
+
+  let offset = (page - 1) * limit;
+  let category = req.query.category;
   try {
     let totalResult, totalPosts, totalPages, result;
     if (category) {
@@ -116,12 +121,16 @@ postRoute.get("/", async (req, res) => {
       totalPages = Math.ceil(totalPosts / limit);
       result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id ORDER BY posts.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
     }
+
+    const nextPage = page < totalPages ? page + 1 : null;
+
     return res.status(200).json({
-      data: result.rows,
       totalPosts,
       totalPages,
       currentPage: page,
-      limit
+      limit,
+      posts: result.rows,
+      nextPage,
     });
   } catch (error) {
     return res.status(500).json({
