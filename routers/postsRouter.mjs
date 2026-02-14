@@ -1,147 +1,20 @@
 import { Router } from "express";
 import pool from "../utils/db.mjs";
-import createPostValidation from "../middlewares/createPost.validation.mjs";
-import updatePostValidation from "../middlewares/updatePost.validation.mjs";
+import postValidation from "../middlewares/post.validateion.mjs";
+import postController from "../controllers/postController.mjs";
 const postRoute = Router();
 
 // create post
-postRoute.post("/", [createPostValidation], async (req, res) => {
-  const newPost = { ...req.body };
-
-  try {
-    // ถ้ามี category (name) ให้ map เป็น category_id
-    let category_id = newPost.category_id;
-    if (!category_id && newPost.category) {
-      const catResult = await pool.query(`SELECT id FROM categories WHERE name = $1`, [newPost.category]);
-      if (catResult.rows.length === 0) {
-        return res.status(400).json({ message: `Category '${newPost.category}' not found` });
-      }
-      category_id = catResult.rows[0].id;
-    }
-
-    const result = await pool.query(
-      `
-      INSERT INTO posts (image, category_id, title, description, content, status_id, date, likes_count)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), 0)
-      RETURNING *;
-      `,
-      [
-        newPost.image,
-        category_id,
-        newPost.title,
-        newPost.description,
-        newPost.content,
-        newPost.status_id,
-      ],
-    );
-
-    return res.status(201).json({
-      message: "Post created successfully",
-      data: result.rows[0],
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Server could not create post because database connection",
-      error: error.message,
-    });
-  }
-});
+postRoute.post("/", [postValidation.create], [postController.create]);
 
 // update post
-postRoute.put("/:postId",[updatePostValidation], async (req, res) => {
-  const newPost = { ...req.body };
-  const { postId } = req.params;
-
-  try {
-    const result = await pool.query(
-      `
-      UPDATE posts 
-      SET image = $1, 
-          category_id = $2, 
-          title = $3, 
-          description = $4, 
-          content = $5, 
-          status_id = $6,
-          date = NOW()
-      WHERE id = $7
-      RETURNING *;
-      `,
-      [
-        newPost.image,
-        newPost.category_id,
-        newPost.title,
-        newPost.description,
-        newPost.content,
-        newPost.status_id,
-        postId,
-      ],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Post not found",
-        param: postId,
-      });
-    }
-
-    return res.status(200).json({
-      message: "Updated post sucessfully",
-      data: result.rows[0],
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Server could not update post because database connection",
-      error: error.message,
-    });
-  }
-});
+postRoute.put("/:postId",[postValidation.update], [postController.update]);
 
 // read all post
-postRoute.get("/", async (req, res) => {
-  // default limit = 6, but allow override via query ?limit=
-  let limit = parseInt(req.query.limit) || 6;
-  if (limit <= 0) limit = 6;
-
-  let page = parseInt(req.query.page) || 1;
-  if (page <= 0) page = 1;
-
-  let offset = (page - 1) * limit;
-  let category = req.query.category;
-  try {
-    let totalResult, totalPosts, totalPages, result;
-    if (category) {
-      // filter by category name (case-insensitive)
-      totalResult = await pool.query(`SELECT COUNT(*) FROM posts INNER JOIN categories ON categories.id = posts.category_id WHERE LOWER(categories.name) = LOWER($1)`, [category]);
-      totalPosts = parseInt(totalResult.rows[0].count);
-      totalPages = Math.ceil(totalPosts / limit);
-      result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id WHERE LOWER(categories.name) = LOWER($1) ORDER BY posts.id DESC LIMIT $2 OFFSET $3`, [category, limit, offset]);
-    } else {
-      totalResult = await pool.query(`SELECT COUNT(*) FROM posts`);
-      totalPosts = parseInt(totalResult.rows[0].count);
-      totalPages = Math.ceil(totalPosts / limit);
-      result = await pool.query(`SELECT posts.*, categories.name AS category FROM posts INNER JOIN categories ON categories.id = posts.category_id ORDER BY posts.id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
-    }
-
-    const nextPage = page < totalPages ? page + 1 : null;
-
-    return res.status(200).json({
-      totalPosts,
-      totalPages,
-      currentPage: page,
-      limit,
-      posts: result.rows,
-      nextPage,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      message: "Server could not read post because database connection",
-      error: error.message,
-    });
-  }
-});
+postRoute.get("/", [postController.readAll]);
 
 // read one post
- postRoute.get("/:postId", async (req, res) => {
+ postRoute.get("/:postId", [postValidation.readById],async (req, res) => {
   const { postId } = req.params;
 
   try {
@@ -156,7 +29,7 @@ postRoute.get("/", async (req, res) => {
 });
 
 // delete post
-postRoute.delete("/:postId", async (req, res) => {
+postRoute.delete("/:postId",[postValidation.delete], async (req, res) => {
   const { postId } = req.params;
 
   try {
