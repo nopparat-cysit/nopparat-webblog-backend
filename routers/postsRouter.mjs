@@ -2,13 +2,20 @@ import { Router } from "express";
 import pool from "../utils/db.mjs";
 import postValidation from "../middlewares/post.validateion.mjs";
 import postController from "../controllers/postController.mjs";
+import protectAdmin from "../middlewares/protectAdmin.mjs";
+import multer from "multer";
+
 const postRoute = Router();
+const multerUpload = multer({ storage: multer.memoryStorage() });
+const imageFileUpload = multerUpload.fields([
+  { name: "imageFile", maxCount: 1 },
+]);
 
-// create post
-postRoute.post("/", [postValidation.create], [postController.create]);
+// create post (multipart: imageFile + body fields)
+postRoute.post("/", [imageFileUpload, protectAdmin, postValidation.create, postController.create]);
 
-// update post
-postRoute.put("/:postId",[postValidation.update], [postController.update]);
+// update post (admin only; multipart optional: imageFile + body fields)
+postRoute.put("/:postId", [imageFileUpload, protectAdmin, postValidation.update, postController.update]);
 
 // read all post
 postRoute.get("/", [postController.readAll]);

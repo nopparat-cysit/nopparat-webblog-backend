@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import postRouter from "./routers/postsRouter.mjs";
 import categoriesRouter from "./routers/categoriesRouter.mjs";
+import authRoute from "./routers/auth.mjs";
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -20,6 +21,11 @@ app.use(
 );
 app.use("/posts", postRouter);
 app.use("/categories", categoriesRouter);
+app.use("/api/signup", authRoute.signup);
+app.use("/api/login", authRoute.login);
+app.use("/get-user", authRoute.getUser);
+app.use("/api/reset-password", authRoute.resetPassword);
+app.use("/api/update-profile", authRoute.updateProfile);
 export default app;
 
 if (process.env.VERCEL !== "1") {
