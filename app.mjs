@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import postRouter from "./routers/postsRouter.mjs";
+import categoriesRouter from "./routers/categoriesRouter.mjs";
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -18,20 +19,7 @@ app.use(
   }),
 );
 app.use("/posts", postRouter);
-
-// app.get("/health", async (req, res) => {
-//   try {
-//     const result = await pool.query(`SELECT * FROM posts`);
-//     return res.json({ message: "success select", data: result.rows });
-//   } catch (error) {
-//     return res.status(500).json({ message: "error naja" });
-//   }
-// });
-
-// app.listen(port, () => {
-//   console.log(`Server is running at ${port}`);
-// });
-
+app.use("/categories", categoriesRouter);
 export default app;
 
 if (process.env.VERCEL !== "1") {
