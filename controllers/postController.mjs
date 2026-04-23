@@ -1,7 +1,12 @@
 import postService from "../services/postService.mjs";
 import pool from "../utils/db.mjs";
 import { createClient } from "@supabase/supabase-js";
-
+import {
+  PUBLISHED_STATUS_ID,
+  createNotificationsForUsers,
+  getMemberUserIds,
+  logNotificationError,
+} from "../services/notificationService.mjs";
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
@@ -54,11 +59,12 @@ const postController = {
         .from(BUCKET_NAME)
         .getPublicUrl(uploadData.path);
       const publicUrl = urlData.publicUrl;
+      const authorId = req.user?.id ?? null;
 
       const result = await pool.query(
         `
-            INSERT INTO posts (image, category_id, title, description, content, status_id, date, likes_count)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW(), 0)
+            INSERT INTO posts (image, category_id, title, description, content, status_id, date, likes_count, author_id)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), 0, $7)
             RETURNING *;
             `,
         [
@@ -68,12 +74,39 @@ const postController = {
           newPost.description.trim(),
           newPost.content.trim(),
           status_id,
+          authorId,
         ],
       );
 
+      const post = result.rows[0];
+      if (status_id === PUBLISHED_STATUS_ID) {
+        try {
+          const memberIds = await getMemberUserIds();
+          const authorNameRow = authorId
+            ? await pool.query("SELECT name FROM users WHERE id = $1", [authorId])
+            : { rows: [] };
+          const authorName = authorNameRow.rows[0]?.name ?? "Admin";
+          const targets = memberIds.filter((id) => id !== authorId);
+          if (targets.length > 0) {
+            await createNotificationsForUsers(targets, {
+              type: "new_article",
+              message: `New article: "${post.title}"`,
+              meta: {
+                user_name: authorName,
+                article_id: String(post.id),
+                article_title: post.title,
+                article_cover: post.image ?? null,
+              },
+            });
+          }
+        } catch (e) {
+          logNotificationError("create post → members", e);
+        }
+      }
+
       return res.status(201).json({
         message: "Post created successfully",
-        data: result.rows[0],
+        data: post,
       });
     } catch (error) {
       console.error("Create post error:", error);
@@ -111,6 +144,10 @@ const postController = {
         return res.status(400).json({ message: "Category ID and Status ID must be numbers" });
       }
 
+      const prevRow = await pool.query("SELECT status_id, title, author_id FROM posts WHERE id = $1", [postId]);
+      const oldStatus = prevRow.rows[0]?.status_id;
+      const authorId = prevRow.rows[0]?.author_id ?? null;
+
       const result = await pool.query(
         `
         UPDATE posts
@@ -142,9 +179,35 @@ const postController = {
         });
       }
 
+      const updated = result.rows[0];
+      if (status_id === PUBLISHED_STATUS_ID && oldStatus !== PUBLISHED_STATUS_ID) {
+        try {
+          const memberIds = await getMemberUserIds();
+          const authorNameRow = authorId
+            ? await pool.query("SELECT name FROM users WHERE id = $1", [authorId])
+            : { rows: [] };
+          const authorName = authorNameRow.rows[0]?.name ?? "Admin";
+          const targets = memberIds.filter((id) => id !== authorId);
+          if (targets.length > 0) {
+            await createNotificationsForUsers(targets, {
+              type: "new_article",
+              message: `New article: "${updated.title}"`,
+              meta: {
+                user_name: authorName,
+                article_id: String(updated.id),
+                article_title: updated.title,
+                article_cover: updated.image ?? null,
+              },
+            });
+          }
+        } catch (e) {
+          logNotificationError("update post → publish → members", e);
+        }
+      }
+
       return res.status(200).json({
         message: "Updated post successfully",
-        data: result.rows[0],
+        data: updated,
       });
     } catch (error) {
       console.error("Update post error:", error);
