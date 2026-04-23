@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import pool from "../utils/db.mjs";
 
@@ -6,6 +7,19 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
+
+const BUCKET_NAME = "my-personal-blog";
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
 
 const signupRouter = Router();
 
@@ -112,7 +126,8 @@ loginRouter.post("/", async (req, res) => {
     return res.status(200).json({
       message: "Signed in successfully",
       access_token: data.session.access_token,
-      data: data
+      refresh_token: data.session.refresh_token,
+      data: data,
     });
   } catch (error) {
     return res.status(500).json({ error: "An error occurred during login" });
@@ -186,6 +201,55 @@ resetPasswordRouter.put("/", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/** POST /api/upload-profile-image — อัปโหลดรูปโปรไฟล์ไป Supabase Storage แล้วคืน public URL (ยังไม่อัปเดต DB; client ส่ง URL ต่อใน PUT /api/update-profile) */
+const uploadProfileImageRouter = Router();
+uploadProfileImageRouter.post(
+  "/",
+  multerUpload.single("imageFile"),
+  async (req, res) => {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: Token missing" });
+    }
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "No image file provided (field name: imageFile)" });
+    }
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      return res.status(400).json({
+        error: "Invalid file type. Use JPEG, PNG, GIF, or WebP.",
+      });
+    }
+    try {
+      const { data: userData, error: getUserError } = await supabase.auth.getUser(token);
+      if (getUserError || !userData?.user) {
+        return res.status(401).json({ error: "Unauthorized or token expired" });
+      }
+      const userId = userData.user.id;
+      const ext =
+        file.originalname?.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "") || "jpg";
+      const filePath = `profiles/${userId}/${Date.now()}.${ext}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false,
+        });
+      if (uploadError) {
+        console.error("Profile image upload error:", uploadError);
+        return res.status(500).json({ error: "Failed to upload image" });
+      }
+      const { data: urlData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(uploadData.path);
+      return res.status(200).json({ profilePic: urlData.publicUrl });
+    } catch (error) {
+      console.error("upload-profile-image error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 const updateProfileRouter = Router();
 updateProfileRouter.put("/", async (req, res) => {
@@ -269,5 +333,6 @@ export default {
   login: loginRouter,
   getUser: getUserRouter,
   resetPassword: resetPasswordRouter,
+  uploadProfileImage: uploadProfileImageRouter,
   updateProfile: updateProfileRouter,
 };
